@@ -114,10 +114,9 @@
   </div>
 
   <script>
-    // Fallback data
-    let rawDistanceKm = 398053;
-    let rawVelocityKms = 1.137394;
-    let rawLightTimeSec = 1.327762;
+    let rawDistanceKm = 0;
+    let rawVelocityKms = 0;
+    let rawLightTimeSec = 0;
 
     let isKm = true;
     let isKmh = true;
@@ -126,41 +125,58 @@
 
     const EARTH_ROTATION_KMH = 1670; 
     const KM_TO_MILES = 0.621371;
+    const SPEED_OF_LIGHT = 299792.458; // km/s
 
     async function fetchTelemetry() {
-      const today = new Date().toISOString().split('T')[0];
-      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+      const now = new Date();
+      const nextMin = new Date(now.getTime() + 60000);
 
-      const rawUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='-211'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@399'&START_TIME='${today}'&STOP_TIME='${tomorrow}'&STEP_SIZE='1d'`;
-      
-      // AllOrigins CORS proxy endpoint
+      // Horizons requires strict time string formats: 'YYYY-MM-DD HH:MM'
+      const startStr = now.toISOString().replace('T', ' ').substring(0, 16);
+      const stopStr = nextMin.toISOString().replace('T', ' ').substring(0, 16);
+
+      const rawUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='-211'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@399'&START_TIME='${startStr}'&STOP_TIME='${stopStr}'&STEP_SIZE='1m'`;
       const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rawUrl)}`;
 
       try {
         const res = await fetch(proxyUrl);
         const wrapper = await res.json();
         const data = JSON.parse(wrapper.contents);
-        
+
         if (data && data.result) {
           const text = data.result;
-          
-          const ltMatch = text.match(/LT=\s*([0-9.E+-]+)/);
-          const rgMatch = text.match(/RG=\s*([0-9.E+-]+)/);
-          const rrMatch = text.match(/RR=\s*([0-9.E+-]+)/);
 
-          if (rgMatch && ltMatch && rrMatch) {
-            rawDistanceKm = parseFloat(rgMatch[1]);
-            rawLightTimeSec = parseFloat(ltMatch[1]);
-            rawVelocityKms = parseFloat(rrMatch[1]);
+          // Parse vector components X, Y, Z and VX, VY, VZ from Horizons output block
+          const xMatch = text.match(/X\s*=\s*([0-9.E+-]+)/);
+          const yMatch = text.match(/Y\s*=\s*([0-9.E+-]+)/);
+          const zMatch = text.match(/Z\s*=\s*([0-9.E+-]+)/);
+          const vxMatch = text.match(/VX\s*=\s*([0-9.E+-]+)/);
+          const vyMatch = text.match(/VY\s*=\s*([0-9.E+-]+)/);
+          const vzMatch = text.match(/VZ\s*=\s*([0-9.E+-]+)/);
+
+          if (xMatch && yMatch && zMatch && vxMatch && vyMatch && vzMatch) {
+            const x = parseFloat(xMatch[1]);
+            const y = parseFloat(yMatch[1]);
+            const z = parseFloat(zMatch[1]);
+            const vx = parseFloat(vxMatch[1]);
+            const vy = parseFloat(vyMatch[1]);
+            const vz = parseFloat(vzMatch[1]);
+
+            // Euclidean distance r = sqrt(x^2 + y^2 + z^2)
+            rawDistanceKm = Math.sqrt(x*x + y*y + z*z);
+            // Radial velocity = (x*vx + y*vy + z*vz) / r
+            rawVelocityKms = Math.abs((x*vx + y*vy + z*vz) / rawDistanceKm);
+            // Light travel time = distance / c
+            rawLightTimeSec = rawDistanceKm / SPEED_OF_LIGHT;
 
             document.getElementById('status').innerText = "Live NASA Telemetry Loaded";
             renderAll();
             return;
           }
         }
-        document.getElementById('status').innerText = "Using Cached NASA Telemetry";
+        document.getElementById('status').innerText = "Parsing Error - Verify Telescope Trajectory Data";
       } catch (err) {
-        document.getElementById('status').innerText = "Using Cached NASA Telemetry";
+        document.getElementById('status').innerText = "Failed to Fetch Live Data";
       }
     }
 
@@ -189,7 +205,6 @@
     function toggleLatency() { isOneWay = !isOneWay; renderAll(); }
     function toggleRotation() { isRotKmh = !isRotKmh; renderAll(); }
 
-    renderAll();
     fetchTelemetry();
   </script>
 </body>
