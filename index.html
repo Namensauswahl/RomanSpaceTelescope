@@ -110,7 +110,7 @@
       <span class="value"><span id="rot-val">--</span> <span id="rot-unit" class="clickable" onclick="toggleRotation()">(km/h)</span></span>
     </div>
 
-    <div class="status" id="status">Calculating Real-Time Orbital Telemetry...</div>
+    <div class="status" id="status">Telemetry Active</div>
   </div>
 
   <script>
@@ -127,32 +127,26 @@
     const KM_TO_MILES = 0.621371;
     const SPEED_OF_LIGHT_KMS = 299792.458;
 
-    // Mission Epoch Constants (August 30, 2026 Liftoff)
-    const LAUNCH_EPOCH = new Date("2026-08-30T11:26:00Z").getTime();
-    const TARGET_L2_DISTANCE_KM = 1500000; // ~1.5 million km to Sun-Earth L2
+    // Launch: Aug 30, 2026 11:26:00 UTC
+    const LAUNCH_TIME = new Date("2026-08-30T11:26:00Z").getTime();
+    const L2_DISTANCE_KM = 1500000; // ~1.5 million km target distance
+    const DECAY_TAU_DAYS = 22.5;    // Transfer orbit relaxation time constant
 
-    function computeRealtimeTelemetry() {
+    function calculateTelemetry() {
       const now = Date.now();
-      const elapsedSeconds = (now - LAUNCH_EPOCH) / 1000;
+      const elapsedMs = Math.max(0, now - LAUNCH_TIME);
+      const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
 
-      if (elapsedSeconds > 0) {
-        // Asymptotic trajectory model towards Sun-Earth L2 halo orbit
-        const progressDays = elapsedSeconds / 86400;
-        
-        // Asymptotic distance approach formula
-        rawDistanceKm = TARGET_L2_DISTANCE_KM * (1 - Math.exp(-progressDays / 18.5)) + (Math.sin(elapsedSeconds / 43200) * 1200);
-        
-        // Current radial velocity calculation
-        const baseVelocityKms = (TARGET_L2_DISTANCE_KM / (18.5 * 86400)) * Math.exp(-progressDays / 18.5);
-        rawVelocityKms = Math.max(0.18, baseVelocityKms) + (Math.cos(elapsedSeconds / 43200) * 0.015);
-        
-        // One-way light speed latency
-        rawLightTimeSec = rawDistanceKm / SPEED_OF_LIGHT_KMS;
+      // Trajectory Distance curve: r(t) = L2_DIST * (1 - e^(-t / tau))
+      const factor = 1 - Math.exp(-elapsedDays / DECAY_TAU_DAYS);
+      rawDistanceKm = L2_DISTANCE_KM * factor;
 
-        document.getElementById('status').innerText = "Live Telemetry Engine Active";
-      } else {
-        document.getElementById('status').innerText = "Pre-Launch Countdown Active";
-      }
+      // Radial Velocity derivative: v(t) = (L2_DIST / tau_seconds) * e^(-t / tau)
+      const tauSeconds = DECAY_TAU_DAYS * 86400;
+      rawVelocityKms = (L2_DISTANCE_KM / tauSeconds) * Math.exp(-elapsedDays / DECAY_TAU_DAYS);
+
+      // Light time latency: t = d / c
+      rawLightTimeSec = rawDistanceKm / SPEED_OF_LIGHT_KMS;
 
       renderAll();
     }
@@ -163,7 +157,7 @@
       document.getElementById('dist-val').innerText = Math.round(dist).toLocaleString();
       document.getElementById('dist-unit').innerText = isKm ? "(km)" : "(miles)";
 
-      // 2. Radial Velocity
+      // 2. Velocity
       const velKmh = rawVelocityKms * 3600;
       const vel = isKmh ? velKmh : velKmh * KM_TO_MILES;
       document.getElementById('vel-val').innerText = Math.round(vel).toLocaleString();
@@ -181,15 +175,14 @@
       document.getElementById('rot-unit').innerText = isRotKmh ? "(km/h)" : "(mph)";
     }
 
-    // Toggle Unit Handlers
     function toggleDistance() { isKm = !isKm; renderAll(); }
     function toggleVelocity() { isKmh = !isKmh; renderAll(); }
     function toggleLatency() { isOneWay = !isOneWay; renderAll(); }
     function toggleRotation() { isRotKmh = !isRotKmh; renderAll(); }
 
-    // Init & Live Loop (Updates every second)
-    computeRealtimeTelemetry();
-    setInterval(computeRealtimeTelemetry, 1000);
+    // Init and trigger every second
+    calculateTelemetry();
+    setInterval(calculateTelemetry, 1000);
   </script>
 </body>
 </html>
