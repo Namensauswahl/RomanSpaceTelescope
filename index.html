@@ -110,7 +110,7 @@
       <span class="value"><span id="rot-val">--</span> <span id="rot-unit" class="clickable" onclick="toggleRotation()">(km/h)</span></span>
     </div>
 
-    <div class="status" id="status">Telemetry Active</div>
+    <div class="status" id="status">Telemetry Active (Browser Time Synced)</div>
   </div>
 
   <script>
@@ -129,47 +129,48 @@
 
     // Launch: Aug 30, 2026 11:26:00 UTC
     const LAUNCH_TIME = new Date("2026-08-30T11:26:00Z").getTime();
-    const L2_DISTANCE_KM = 1500000; // ~1.5 million km target distance
-    const DECAY_TAU_DAYS = 22.5;    // Transfer orbit relaxation time constant
+    const L2_DISTANCE_KM = 1500000;
+    const DECAY_TAU_DAYS = 22.5;
 
     function calculateTelemetry() {
-      const now = Date.now();
+      // Pull current system timestamp directly from browser
+      const now = new Date().getTime();
       const elapsedMs = Math.max(0, now - LAUNCH_TIME);
       const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
 
-      // Trajectory Distance curve: r(t) = L2_DIST * (1 - e^(-t / tau))
+      // Trajectory Distance curve
       const factor = 1 - Math.exp(-elapsedDays / DECAY_TAU_DAYS);
       rawDistanceKm = L2_DISTANCE_KM * factor;
 
-      // Radial Velocity derivative: v(t) = (L2_DIST / tau_seconds) * e^(-t / tau)
+      // Radial Velocity derivative
       const tauSeconds = DECAY_TAU_DAYS * 86400;
       rawVelocityKms = (L2_DISTANCE_KM / tauSeconds) * Math.exp(-elapsedDays / DECAY_TAU_DAYS);
 
-      // Light time latency: t = d / c
+      // Signal Delay
       rawLightTimeSec = rawDistanceKm / SPEED_OF_LIGHT_KMS;
 
       renderAll();
     }
 
     function renderAll() {
-      // 1. Distance
+      // Distance
       const dist = isKm ? rawDistanceKm : rawDistanceKm * KM_TO_MILES;
       document.getElementById('dist-val').innerText = Math.round(dist).toLocaleString();
       document.getElementById('dist-unit').innerText = isKm ? "(km)" : "(miles)";
 
-      // 2. Velocity
+      // Velocity
       const velKmh = rawVelocityKms * 3600;
       const vel = isKmh ? velKmh : velKmh * KM_TO_MILES;
       document.getElementById('vel-val').innerText = Math.round(vel).toLocaleString();
       document.getElementById('vel-unit').innerText = isKmh ? "(km/h)" : "(mph)";
 
-      // 3. Signal Latency
+      // Signal Latency
       const ms = rawLightTimeSec * 1000;
       const delay = isOneWay ? ms : ms * 2;
       document.getElementById('time-val').innerText = Math.round(delay).toLocaleString() + " ms";
       document.getElementById('time-unit').innerText = isOneWay ? "(one-way)" : "(roundtrip)";
 
-      // 4. Earth Rotation
+      // Earth Rotation
       const rot = isRotKmh ? EARTH_ROTATION_KMH : EARTH_ROTATION_KMH * KM_TO_MILES;
       document.getElementById('rot-val').innerText = Math.round(rot).toLocaleString();
       document.getElementById('rot-unit').innerText = isRotKmh ? "(km/h)" : "(mph)";
@@ -180,7 +181,7 @@
     function toggleLatency() { isOneWay = !isOneWay; renderAll(); }
     function toggleRotation() { isRotKmh = !isRotKmh; renderAll(); }
 
-    // Init and trigger every second
+    // Run immediately and update every 1 second
     calculateTelemetry();
     setInterval(calculateTelemetry, 1000);
   </script>
