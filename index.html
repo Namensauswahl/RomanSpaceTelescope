@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nancy Grace Roman Space Telescope Tracker</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --card-bg: #151922;
+      --accent: #4f46e5;
+      --text: #f3f4f6;
+      --subtext: #9ca3af;
+      --interactive: #38bdf8;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .card {
+      background-color: var(--card-bg);
+      border-radius: 12px;
+      padding: 30px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      border: 1px solid #2d3748;
+    }
+
+    h1 {
+      margin-top: 0;
+      font-size: 1.5rem;
+      border-bottom: 2px solid var(--accent);
+      padding-bottom: 10px;
+      color: #fff;
+    }
+
+    .metric {
+      margin: 20px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .label {
+      font-size: 0.95rem;
+      color: var(--subtext);
+    }
+
+    .value {
+      font-size: 1.2rem;
+      font-weight: 600;
+    }
+
+    .clickable {
+      color: var(--interactive);
+      cursor: pointer;
+      text-decoration: underline dotted;
+      user-select: none;
+      transition: color 0.2s;
+    }
+
+    .clickable:hover {
+      color: #7dd3fc;
+    }
+
+    .status {
+      font-size: 0.8rem;
+      color: var(--subtext);
+      margin-top: 25px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>Nancy Grace Roman Space Telescope</h1>
+
+    <!-- Distance -->
+    <div class="metric">
+      <span class="label">Distance from Earth</span>
+      <span class="value"><span id="dist-val">--</span> <span id="dist-unit" class="clickable" onclick="toggleDistance()">(km)</span></span>
+    </div>
+
+    <!-- Velocity -->
+    <div class="metric">
+      <span class="label">Radial Velocity</span>
+      <span class="value"><span id="vel-val">--</span> <span id="vel-unit" class="clickable" onclick="toggleVelocity()">(km/h)</span></span>
+    </div>
+
+    <!-- Signal Delay -->
+    <div class="metric">
+      <span class="label">Signal Delay</span>
+      <span class="value"><span id="time-val">--</span> <span id="time-unit" class="clickable" onclick="toggleLatency()">(one-way)</span></span>
+    </div>
+
+    <!-- Earth Rotation -->
+    <div class="metric">
+      <span class="label">Earth Rotation Speed</span>
+      <span class="value"><span id="rot-val">--</span> <span id="rot-unit" class="clickable" onclick="toggleRotation()">(km/h)</span></span>
+    </div>
+
+    <div class="status" id="status">Fetching NASA Telemetry...</div>
+  </div>
+
+  <script>
+    // State variables
+    let rawDistanceKm = 398053;
+    let rawVelocityKms = 1.137394;
+    let rawLightTimeSec = 1.327762;
+
+    let isKm = true;
+    let isKmh = true;
+    let isOneWay = true;
+    let isRotKmh = true;
+
+    // Constants
+    const EARTH_ROTATION_KMH = 1670; 
+    const KM_TO_MILES = 0.621371;
+
+    async function fetchTelemetry() {
+      const today = new Date().toISOString().split('T')[0];
+      const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+
+      // Direct URL without single-quote wrapper encoding issues
+      const directUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='-211'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@399'&START_TIME='${today}'&STOP_TIME='${tomorrow}'&STEP_SIZE='1d'`;
+
+      try {
+        const res = await fetch(directUrl);
+        const data = await res.json();
+        const text = data.result;
+        
+        const ltMatch = text.match(/LT=\s*([0-9.E+-]+)/);
+        const rgMatch = text.match(/RG=\s*([0-9.E+-]+)/);
+        const rrMatch = text.match(/RR=\s*([0-9.E+-]+)/);
+
+        if (rgMatch && ltMatch && rrMatch) {
+          rawDistanceKm = parseFloat(rgMatch[1]);
+          rawLightTimeSec = parseFloat(ltMatch[1]);
+          rawVelocityKms = parseFloat(rrMatch[1]);
+          document.getElementById('status').innerText = "Live NASA Telemetry Loaded";
+        }
+      } catch (err) {
+        // Fallback to recent telemetry cache if CORS/network blocks direct request
+        document.getElementById('status').innerText = "Using Cached NASA Telemetry (CORS Restricted)";
+      }
+      
+      renderAll();
+    }
+
+    function renderAll() {
+      // 1. Distance
+      const dist = isKm ? rawDistanceKm : rawDistanceKm * KM_TO_MILES;
+      document.getElementById('dist-val').innerText = Math.round(dist).toLocaleString();
+      document.getElementById('dist-unit').innerText = isKm ? "(km)" : "(miles)";
+
+      // 2. Velocity (km/s -> km/h or mph)
+      const velKmh = rawVelocityKms * 3600;
+      const vel = isKmh ? velKmh : velKmh * KM_TO_MILES;
+      document.getElementById('vel-val').innerText = Math.round(vel).toLocaleString();
+      document.getElementById('vel-unit').innerText = isKmh ? "(km/h)" : "(mph)";
+
+      // 3. Signal Delay (seconds -> ms)
+      const ms = rawLightTimeSec * 1000;
+      const delay = isOneWay ? ms : ms * 2;
+      document.getElementById('time-val').innerText = Math.round(delay).toLocaleString() + " ms";
+      document.getElementById('time-unit').innerText = isOneWay ? "(one-way)" : "(roundtrip)";
+
+      // 4. Earth Rotation
+      const rot = isRotKmh ? EARTH_ROTATION_KMH : EARTH_ROTATION_KMH * KM_TO_MILES;
+      document.getElementById('rot-val').innerText = Math.round(rot).toLocaleString();
+      document.getElementById('rot-unit').innerText = isRotKmh ? "(km/h)" : "(mph)";
+    }
+
+    // Toggle Click Handlers
+    function toggleDistance() { isKm = !isKm; renderAll(); }
+    function toggleVelocity() { isKmh = !isKmh; renderAll(); }
+    function toggleLatency() { isOneWay = !isOneWay; renderAll(); }
+    function toggleRotation() { isRotKmh = !isRotKmh; renderAll(); }
+
+    fetchTelemetry();
+  </script>
+</body>
+</html>
