@@ -114,7 +114,7 @@
   </div>
 
   <script>
-    // Initial fallback values
+    // Fallback data
     let rawDistanceKm = 398053;
     let rawVelocityKms = 1.137394;
     let rawLightTimeSec = 1.327762;
@@ -124,7 +124,6 @@
     let isOneWay = true;
     let isRotKmh = true;
 
-    // Constants
     const EARTH_ROTATION_KMH = 1670; 
     const KM_TO_MILES = 0.621371;
 
@@ -132,11 +131,13 @@
       const today = new Date().toISOString().split('T')[0];
       const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-      // Fixed endpoint URL without raw quotes
-      const targetUrl = `https://ssd-api.jpl.nasa.gov/horizons.api?format=json&COMMAND=-211&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=500@399&START_TIME=${today}&STOP_TIME=${tomorrow}&STEP_SIZE=1d`;
+      const rawUrl = `https://ssd-api.jpl.nasa.gov/horizons.api?format=json&COMMAND='-211'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@399'&START_TIME='${today}'&STOP_TIME='${tomorrow}'&STEP_SIZE='1d'`;
+      
+      // Proxy prefix to bypass browser CORS enforcement
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(rawUrl)}`;
 
       try {
-        const res = await fetch(targetUrl);
+        const res = await fetch(proxyUrl);
         const data = await res.json();
         
         if (data && data.result) {
@@ -163,36 +164,30 @@
     }
 
     function renderAll() {
-      // 1. Distance
       const dist = isKm ? rawDistanceKm : rawDistanceKm * KM_TO_MILES;
       document.getElementById('dist-val').innerText = Math.round(dist).toLocaleString();
       document.getElementById('dist-unit').innerText = isKm ? "(km)" : "(miles)";
 
-      // 2. Velocity
       const velKmh = rawVelocityKms * 3600;
       const vel = isKmh ? velKmh : velKmh * KM_TO_MILES;
       document.getElementById('vel-val').innerText = Math.round(vel).toLocaleString();
       document.getElementById('vel-unit').innerText = isKmh ? "(km/h)" : "(mph)";
 
-      // 3. Signal Delay
       const ms = rawLightTimeSec * 1000;
       const delay = isOneWay ? ms : ms * 2;
       document.getElementById('time-val').innerText = Math.round(delay).toLocaleString() + " ms";
       document.getElementById('time-unit').innerText = isOneWay ? "(one-way)" : "(roundtrip)";
 
-      // 4. Earth Rotation
       const rot = isRotKmh ? EARTH_ROTATION_KMH : EARTH_ROTATION_KMH * KM_TO_MILES;
       document.getElementById('rot-val').innerText = Math.round(rot).toLocaleString();
       document.getElementById('rot-unit').innerText = isRotKmh ? "(km/h)" : "(mph)";
     }
 
-    // Toggle Handlers
     function toggleDistance() { isKm = !isKm; renderAll(); }
     function toggleVelocity() { isKmh = !isKmh; renderAll(); }
     function toggleLatency() { isOneWay = !isOneWay; renderAll(); }
     function toggleRotation() { isRotKmh = !isRotKmh; renderAll(); }
 
-    // Init
     renderAll();
     fetchTelemetry();
   </script>
