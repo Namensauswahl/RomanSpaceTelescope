@@ -128,34 +128,42 @@
     const EARTH_ROTATION_KMH = 1670; 
     const KM_TO_MILES = 0.621371;
 
-    async function fetchTelemetry() {
+    // JSONP Handler to bypass CORS on GitHub Pages
+    function fetchTelemetryJSONP() {
       const today = new Date().toISOString().split('T')[0];
       const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-      // Direct URL without single-quote wrapper encoding issues
-      const directUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='-211'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@399'&START_TIME='${today}'&STOP_TIME='${tomorrow}'&STEP_SIZE='1d'`;
+      // Define global callback function for NASA response
+      window.handleHorizonsData = function(data) {
+        try {
+          const text = data.result;
+          const ltMatch = text.match(/LT=\s*([0-9.E+-]+)/);
+          const rgMatch = text.match(/RG=\s*([0-9.E+-]+)/);
+          const rrMatch = text.match(/RR=\s*([0-9.E+-]+)/);
 
-      try {
-        const res = await fetch(directUrl);
-        const data = await res.json();
-        const text = data.result;
-        
-        const ltMatch = text.match(/LT=\s*([0-9.E+-]+)/);
-        const rgMatch = text.match(/RG=\s*([0-9.E+-]+)/);
-        const rrMatch = text.match(/RR=\s*([0-9.E+-]+)/);
-
-        if (rgMatch && ltMatch && rrMatch) {
-          rawDistanceKm = parseFloat(rgMatch[1]);
-          rawLightTimeSec = parseFloat(ltMatch[1]);
-          rawVelocityKms = parseFloat(rrMatch[1]);
-          document.getElementById('status').innerText = "Live NASA Telemetry Loaded";
+          if (rgMatch && ltMatch && rrMatch) {
+            rawDistanceKm = parseFloat(rgMatch[1]);
+            rawLightTimeSec = parseFloat(ltMatch[1]);
+            rawVelocityKms = parseFloat(rrMatch[1]);
+            document.getElementById('status').innerText = "Live NASA Telemetry Loaded";
+            renderAll();
+          }
+        } catch (e) {
+          document.getElementById('status').innerText = "Using Cached NASA Telemetry";
         }
-      } catch (err) {
-        // Fallback to recent telemetry cache if CORS/network blocks direct request
-        document.getElementById('status').innerText = "Using Cached NASA Telemetry (CORS Restricted)";
-      }
+      };
+
+      // Create dynamic script element for JSONP request
+      const script = document.createElement('script');
+      const targetUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='-211'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@399'&START_TIME='${today}'&STOP_TIME='${tomorrow}'&STEP_SIZE='1d'&callback=handleHorizonsData`;
       
-      renderAll();
+      script.src = targetUrl;
+      script.onerror = function() {
+        document.getElementById('status').innerText = "Using Cached NASA Telemetry";
+        renderAll();
+      };
+      
+      document.body.appendChild(script);
     }
 
     function renderAll() {
@@ -164,13 +172,13 @@
       document.getElementById('dist-val').innerText = Math.round(dist).toLocaleString();
       document.getElementById('dist-unit').innerText = isKm ? "(km)" : "(miles)";
 
-      // 2. Velocity (km/s -> km/h or mph)
+      // 2. Velocity
       const velKmh = rawVelocityKms * 3600;
       const vel = isKmh ? velKmh : velKmh * KM_TO_MILES;
       document.getElementById('vel-val').innerText = Math.round(vel).toLocaleString();
       document.getElementById('vel-unit').innerText = isKmh ? "(km/h)" : "(mph)";
 
-      // 3. Signal Delay (seconds -> ms)
+      // 3. Signal Delay
       const ms = rawLightTimeSec * 1000;
       const delay = isOneWay ? ms : ms * 2;
       document.getElementById('time-val').innerText = Math.round(delay).toLocaleString() + " ms";
@@ -188,7 +196,9 @@
     function toggleLatency() { isOneWay = !isOneWay; renderAll(); }
     function toggleRotation() { isRotKmh = !isRotKmh; renderAll(); }
 
-    fetchTelemetry();
+    // Initial render & fetch
+    renderAll();
+    fetchTelemetryJSONP();
   </script>
 </body>
 </html>
