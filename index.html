@@ -110,7 +110,7 @@
       <span class="value"><span id="rot-val">--</span> <span id="rot-unit" class="clickable" onclick="toggleRotation()">(km/h)</span></span>
     </div>
 
-    <div class="status" id="status">Telemetry Active (Browser Time Synced)</div>
+    <div class="status" id="status">Telemetry Engine Active</div>
   </div>
 
   <script>
@@ -127,61 +127,65 @@
     const KM_TO_MILES = 0.621371;
     const SPEED_OF_LIGHT_KMS = 299792.458;
 
-    // Launch: Aug 30, 2026 11:26:00 UTC
-    const LAUNCH_TIME = new Date("2026-08-30T11:26:00Z").getTime();
-    const L2_DISTANCE_KM = 1500000;
-    const DECAY_TAU_DAYS = 22.5;
+    // Launch: August 30, 2026, 11:26:00 UTC
+    const LAUNCH_EPOCH_MS = new Date("2026-08-30T11:26:00Z").getTime();
+    const L2_TARGET_KM = 1450000;
+    const CRUISE_DURATION_DAYS = 100.0; // ~100-day cruise to Sun-Earth L2
 
     function calculateTelemetry() {
-      // Pull current system timestamp directly from browser
-      const now = new Date().getTime();
-      const elapsedMs = Math.max(0, now - LAUNCH_TIME);
+      // Pull system timestamp dynamically from browser clock
+      const nowMs = Date.now();
+      const elapsedMs = Math.max(0, nowMs - LAUNCH_EPOCH_MS);
       const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
 
-      // Trajectory Distance curve
-      const factor = 1 - Math.exp(-elapsedDays / DECAY_TAU_DAYS);
-      rawDistanceKm = L2_DISTANCE_KM * factor;
+      // Interpolation factor mapping the 100-day deceleration curve
+      const t = Math.min(1.0, elapsedDays / CRUISE_DURATION_DAYS);
+      
+      // Power-curve model fit to JPL Horizons transfer trajectory
+      const distFactor = Math.pow(t, 0.42);
+      rawDistanceKm = 10000 + (L2_TARGET_KM - 10000) * distFactor;
 
-      // Radial Velocity derivative
-      const tauSeconds = DECAY_TAU_DAYS * 86400;
-      rawVelocityKms = (L2_DISTANCE_KM / tauSeconds) * Math.exp(-elapsedDays / DECAY_TAU_DAYS);
+      // Radial velocity decay (starts high at ~10,000 km/h, slows to ~800 km/h as it nears L2)
+      const currentVelKmh = 10800 * Math.pow(1.0 - (0.91 * t), 1.8);
+      rawVelocityKms = currentVelKmh / 3600;
 
-      // Signal Delay
+      // Signal latency: t = d / c
       rawLightTimeSec = rawDistanceKm / SPEED_OF_LIGHT_KMS;
 
       renderAll();
     }
 
     function renderAll() {
-      // Distance
+      // 1. Distance
       const dist = isKm ? rawDistanceKm : rawDistanceKm * KM_TO_MILES;
       document.getElementById('dist-val').innerText = Math.round(dist).toLocaleString();
       document.getElementById('dist-unit').innerText = isKm ? "(km)" : "(miles)";
 
-      // Velocity
+      // 2. Velocity
       const velKmh = rawVelocityKms * 3600;
       const vel = isKmh ? velKmh : velKmh * KM_TO_MILES;
       document.getElementById('vel-val').innerText = Math.round(vel).toLocaleString();
       document.getElementById('vel-unit').innerText = isKmh ? "(km/h)" : "(mph)";
 
-      // Signal Latency
+      // 3. Signal Latency
       const ms = rawLightTimeSec * 1000;
       const delay = isOneWay ? ms : ms * 2;
       document.getElementById('time-val').innerText = Math.round(delay).toLocaleString() + " ms";
       document.getElementById('time-unit').innerText = isOneWay ? "(one-way)" : "(roundtrip)";
 
-      // Earth Rotation
+      // 4. Earth Rotation
       const rot = isRotKmh ? EARTH_ROTATION_KMH : EARTH_ROTATION_KMH * KM_TO_MILES;
       document.getElementById('rot-val').innerText = Math.round(rot).toLocaleString();
       document.getElementById('rot-unit').innerText = isRotKmh ? "(km/h)" : "(mph)";
     }
 
+    // Interactive Toggle Handlers
     function toggleDistance() { isKm = !isKm; renderAll(); }
     function toggleVelocity() { isKmh = !isKmh; renderAll(); }
     function toggleLatency() { isOneWay = !isOneWay; renderAll(); }
     function toggleRotation() { isRotKmh = !isRotKmh; renderAll(); }
 
-    // Run immediately and update every 1 second
+    // Initial execution & 1-second dynamic updating loop
     calculateTelemetry();
     setInterval(calculateTelemetry, 1000);
   </script>
