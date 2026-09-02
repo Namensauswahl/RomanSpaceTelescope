@@ -131,14 +131,15 @@
       const today = new Date().toISOString().split('T')[0];
       const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
-      const rawUrl = `https://ssd-api.jpl.nasa.gov/horizons.api?format=json&COMMAND='-211'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@399'&START_TIME='${today}'&STOP_TIME='${tomorrow}'&STEP_SIZE='1d'`;
+      const rawUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='-211'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='500@399'&START_TIME='${today}'&STOP_TIME='${tomorrow}'&STEP_SIZE='1d'`;
       
-      // Proxy prefix to bypass browser CORS enforcement
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(rawUrl)}`;
+      // AllOrigins CORS proxy endpoint
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rawUrl)}`;
 
       try {
         const res = await fetch(proxyUrl);
-        const data = await res.json();
+        const wrapper = await res.json();
+        const data = JSON.parse(wrapper.contents);
         
         if (data && data.result) {
           const text = data.result;
